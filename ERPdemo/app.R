@@ -75,7 +75,16 @@ ui <- fluidPage(
   # Sidebar with a slider input for number of bins 
   sidebarLayout(
     sidebarPanel(
-    
+      
+      # selectInput("whichData", label = h3("Select box"), 
+      #             choices = list("LevCat" = "LevCatGA", "Custom" = "Custom"), 
+      #             selected = 1),
+      # 
+      # conditionalPanel(
+      #   condition = "input.whichData == 'Custom'",
+      #   fileInput("customData", label = h3("File input")
+      #   ),
+      # 
       checkboxGroupInput("GroupMeans", 
                          label = h4("Group effects"), 
                          choices = list("Condition means" = "Main",
@@ -139,7 +148,7 @@ server <- function(input, output) {
   
   output$ERPPlot <- renderPlot({
     
-    levCat.plot <- dataInput() %>% 
+    levCat.plot <- filter(dataInput(), effectType %in% input$indivEffects | effectType %in% input$GroupMeans) %>% 
       ggplot(aes(Time,amplitude))+
       scale_color_brewer(palette = "Set1")+
       theme_minimal()
