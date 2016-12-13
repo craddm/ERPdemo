@@ -1,159 +1,224 @@
 # A Shiny App for exploration of ERPs to go along with my blog at
 # http://craddm.github.io/
-# Only for two conditions at present.
+# Only for two conditions at present. Now allows uploading of own data.
+#
+# TO DO - allow specification of custom names
 # 
 # Matt Craddock, 2016
 
+# Load required libraries
 library(shiny)
 library(tidyverse)
-library(reshape2)
 library(magrittr)
 library(Rmisc)
 library(Cairo)
+library(shinythemes)
 options(shiny.usecairo=T)
 
+#Load and prepare example data
 
 levCatGA <- read_csv("data/levCatObjNon.csv",
                      col_names = c("Object", "Non-Object", "Time", "Subject")) %>%
   mutate(Difference = Object - `Non-Object`) %>%
-  gather(condition, amplitude,-Time,-Subject) %>%
-  mutate(effectType = factor(if_else(condition == "Difference", "Difference", "Main")))
+  gather(condition, amplitude, -Time, -Subject) %>%
+  mutate(
+    effectType = factor(if_else(
+      condition == "Difference", "Difference", "Main"
+    )),
+    condition = factor(
+      condition,
+      levels = c("Object", "Non-Object", "Difference"),
+      labels = c("Object", "Non-Object", "Difference")
+    )
+  )
 
 levCatGA$Subject <- factor(levCatGA$Subject)
 levCatGA$condition <- factor(levCatGA$condition)
 
-WSCI <- filter(levCatGA,condition != "Difference") %>%
-  split(.$Time) %>%
-  map(~summarySEwithin(data = .,
-                       measurevar = "amplitude",
-                       withinvars = "condition",
-                       idvar = "Subject")) %>%
-  map_df(extract) %>%
-  mutate(
-    Time = rep(unique(levCatGA$Time),each =2), #Note, you'll have to change 2 to match the number of conditions,
-    CItype = factor("WSCI"),
-    CIclass = factor("Main")
-  )
-
-BSCI <- filter(levCatGA,condition != "Difference") %>%
-  split(.$Time) %>%
-  map(~summarySE(data = .,
-                 measurevar = "amplitude",
-                 groupvars = "condition"
-  )) %>%
-  map_df(extract) %>%
-  mutate(
-    Time = rep(unique(levCatGA$Time),each =2), #Note, you'll have to change 2 to match the number of conditions,
-    CItype = factor("BSCI"),
-    CIclass = factor("Main")
-  )
-
-diffCI <- filter(levCatGA,condition == "Difference") %>%
-  split(.$Time) %>%
-  map(~summarySE(data = .,
-                 measurevar = "amplitude"
-  )) %>%
-  map_df(extract) %>%
-  mutate(
-    condition = "Difference",
-    Time = unique(levCatGA$Time),
-    CItype = factor("Difference"),
-    CIclass = factor("Difference")
-  ) %>%
-  select(-.id)
-
-allCIs <- rbind(BSCI,WSCI,diffCI)
-#allCIs$CIclass <- factor(allCIs$CIclass)
-#allCIs$condition <- factor(allCIs$condition)
+ERPdata <- levCatGA
 
 # Define UI for application that draws the ERPs
 ui <- fluidPage(
+  theme = shinytheme("paper"),
   
   # Application title
   titlePanel("Exploring ERP plot options"),
   
-  # Sidebar with a slider input for number of bins 
+  # Sidebar
   sidebarLayout(
     sidebarPanel(
       
-      # selectInput("whichData", label = h3("Select box"), 
-      #             choices = list("LevCat" = "LevCatGA", "Custom" = "Custom"), 
-      #             selected = 1),
-      # 
-      # conditionalPanel(
-      #   condition = "input.whichData == 'Custom'",
-      #   fileInput("customData", label = h3("File input")
-      #   ),
-      # 
-      checkboxGroupInput("GroupMeans", 
-                         label = h4("Group effects"), 
-                         choices = list("Condition means" = "Main",
-                                        "Difference wave" = "Difference"),
-                         inline = TRUE,
-                         selected = "Main"),
+      selectInput(
+        "whichData",
+        label = h4("Choose dataset"),
+        choices = list("LevCat" = 1, "Custom" = 2),
+        selected = 1
+      ),
       
-      checkboxGroupInput("indivEffects", 
-                         label = h4("Individual effects"), 
-                         choices = list("Main effects" = "Main",
-                                        "Difference waves" = "Difference"),
-                         inline = TRUE
-                         ),
+      checkboxGroupInput(
+        "GroupMeans",
+        label = h4("Group effects"),
+        choices = list("Condition means" = "Main",
+                       "Difference wave" = "Difference"),
+        inline = TRUE,
+        selected = "Main"
+      ),
+      
+      checkboxGroupInput(
+        "indivEffects",
+        label = h4("Individual effects"),
+        choices = list("Main effects" = "Main",
+                       "Difference waves" = "Difference"),
+        inline = TRUE
+      ),
       
       h4("Confidence intervals"),
-      
       checkboxInput("plotCIs",
                     label = "Plot confidence intervals",
                     value = FALSE),
+      uiOutput("CIselect"),
       
-      radioButtons("confInts", 
-                         label = NULL, 
-                         choices = list("Between-subject" = 1,
-                                        "Within-subject" = 2, 
-                                        "Both" = 3),
-                         inline = TRUE
-                         ),
-      
-      sliderInput("timeRange",
-                  label = "Time range to plot",
-                  min = (round(min(levCatGA$Time))),
-                  max = (round(max(levCatGA$Time))),
-                  value = c(-100,400)
-                  ),
+      sliderInput(
+        "timeRange",
+        label = "Time range to plot",
+        min = (round(min(ERPdata$Time))),
+        max = (round(max(ERPdata$Time))),
+        value = c(-100, 400)
+      ),
       
       checkboxInput("facetSel",
                     label = "Split conditions?",
-                    value = FALSE)),
+                    value = FALSE)
+    ),
+    
     
     # Show the ERP plot
     mainPanel(
-      plotOutput("ERPPlot")
+      plotOutput("ERPPlot"),
+      conditionalPanel(
+        condition = "input.whichData == 2",
+         fileInput("customData", label = h4("Upload data"))
+        #           textInput("col1", label = ("Col1"), value = "Enter text...")
+      )
     )
   )
 )
 
 # Define server logic required to draw the plot
-server <- function(input, output) {
+server <- function(input, output, session) {
+  
+  #First set up conditional UI elements
+  output$CIselect <- renderUI({
+    if (input$plotCIs){
+      radioButtons("confInts", 
+                   label = NULL, 
+                   choices = list("Between-subject" = 1,
+                                  "Within-subject" = 2, 
+                                  "Both" = 3),
+                   selected = 1,
+                   inline = TRUE)
+    }
+  })
+  
+  # Check if participant wants to upload a file, upload it and add column names if so.
+  fileData <- reactive({
+    inFile <- input$customData
+    if (is.null(inFile)) {
+      # User has not uploaded a file yet
+      return(NULL)
+    }
+    read_csv(inFile$datapath,
+             col_names = c("Cond1", "Cond2", "Time", "Subject")) %>%
+      mutate(Difference = Cond1 - Cond2) %>%
+      gather(condition, amplitude, -Time, -Subject) %>%
+      mutate(
+        effectType = factor(if_else(
+          condition == "Difference", "Difference", "Main"
+        )),
+        condition = factor(
+          condition,
+          levels = c("Cond1", "Cond2", "Difference"),
+          labels = c("Cond1", "Cond2", "Difference")
+        )
+      )
+  })
   
   dataInput <- reactive({
-    levCatGA <- filter(levCatGA,
-                       Time > input$timeRange[1] & Time < input$timeRange[2]
-    )
+    if (is.null(input$customData)) {
+      levCatGA
+    } else if (is.null(input$whichData)) {
+      levCatGA
+    } else if (input$whichData == 1) {
+      levCatGA
+    } else if (input$whichData == 2) {
+      fileData()
+    }
   })
-
-  allCIinput <- reactive({
-    allCIs <- filter(allCIs,
-                     Time > input$timeRange[1] & Time < input$timeRange[2]
-    )
+  
+  allCIs <- reactive({
+    WSCI <- filter(dataInput(), condition != "Difference") %>%
+      split(.$Time) %>%
+      map(
+        ~ summarySEwithin(
+          data = .,
+          measurevar = "amplitude",
+          withinvars = "condition",
+          idvar = "Subject"
+        )
+      ) %>%
+      map_df(extract) %>%
+      mutate(
+        Time = rep(unique(dataInput()$Time), each = 2),
+        #Note, you'll have to change 2 to match the number of conditions,
+        CItype = factor("WSCI"),
+        CIclass = factor("Main")
+      )
+    
+    BSCI <- filter(dataInput(), condition != "Difference") %>%
+      split(.$Time) %>%
+      map( ~ summarySE(
+        data = .,
+        measurevar = "amplitude",
+        groupvars = "condition"
+      )) %>%
+      map_df(extract) %>%
+      mutate(
+        Time = rep(unique(dataInput()$Time), each = 2),
+        #Note, you'll have to change 2 to match the number of conditions,
+        CItype = factor("BSCI"),
+        CIclass = factor("Main")
+      )
+    
+    diffCI <- filter(dataInput(), condition == "Difference") %>%
+      split(.$Time) %>%
+      map( ~ summarySE(data = .,
+                       measurevar = "amplitude")) %>%
+      map_df(extract) %>%
+      mutate(
+        condition = "Difference",
+        Time = unique(dataInput()$Time),
+        CItype = factor("Difference"),
+        CIclass = factor("Difference")
+      ) %>%
+      select(-.id)
+    
+    rbind(BSCI, WSCI, diffCI)
   })
   
   output$ERPPlot <- renderPlot({
     
-    levCat.plot <- filter(dataInput(), effectType %in% input$indivEffects | effectType %in% input$GroupMeans) %>% 
-      ggplot(aes(Time,amplitude))+
-      scale_color_brewer(palette = "Set1")+
+    levCat.plot <-
+      filter(
+        dataInput(),
+        effectType %in% input$indivEffects |
+          effectType %in% input$GroupMeans 
+      ) %>%
+      ggplot(aes(Time, amplitude)) +
+      scale_color_brewer(palette = "Set1") +
       theme_minimal()
     
-    if (is.null(input$GroupMeans) == FALSE) {
+    if (!is.null(input$GroupMeans)) {
+      
       ERPdata <- filter(dataInput(), effectType %in% input$GroupMeans)
       
       levCat.plot <- levCat.plot +
@@ -163,19 +228,23 @@ server <- function(input, output) {
           geom = "line",
           size = 1,
           aes(colour = condition)
-        )
+        )+ 
+        scale_colour_discrete(limits = levels(ERPdata$condition))
       
       if (input$plotCIs == TRUE) {
-        CIdata <-  filter(allCIinput(), CIclass %in% input$GroupMeans)
-        if (input$confInts == 1) {
+        
+        CIdata <-  filter(allCIs(), CIclass %in% input$GroupMeans)
+        
+        if (is.null(input$confInts)) {
+          } else if (input$confInts == 1) {
           levCat.plot <- levCat.plot +
             geom_ribbon(
               data = filter(CIdata, CItype != "WSCI"),
               aes(
                 ymin = amplitude - ci,
                 ymax = amplitude + ci,
-                fill = condition,
-                colour = condition
+                colour = condition,
+                fill = condition
               ),
               linetype = "dashed",
               alpha = 0.3
@@ -198,7 +267,7 @@ server <- function(input, output) {
         } else if (input$confInts == 3) {
           levCat.plot <- levCat.plot +
             geom_ribbon(
-              data = filter(CIdata,CItype != "BSCI"),
+              data = filter(CIdata, CItype != "BSCI"),
               aes(
                 ymin = amplitude - ci,
                 ymax = amplitude + ci,
@@ -209,7 +278,7 @@ server <- function(input, output) {
               alpha = 0.3
             ) +
             geom_ribbon(
-              data = filter(CIdata,CItype == "BSCI"),
+              data = filter(CIdata, CItype == "BSCI"),
               aes(
                 ymin = amplitude - ci,
                 ymax = amplitude + ci,
@@ -220,9 +289,25 @@ server <- function(input, output) {
               alpha = 0.3
             ) +
             guides(fill = "none")
+        } else{
+          levCat.plot <- levCat.plot +
+            geom_ribbon(
+              data = filter(CIdata, CItype != "WSCI"),
+              aes(
+                ymin = amplitude - ci,
+                ymax = amplitude + ci,
+                colour = condition,
+                fill = condition
+              ),
+              linetype = "dashed",
+              alpha = 0.3
+            ) +
+            guides(fill = "none")
         }
       }
     }
+    
+    #If user requests individual effects, plot them for whatever types they have currently plotted (i.e. main effects and differences)
     
     if (is.null(input$indivEffects) == FALSE) {
       ERPdata <- filter(dataInput(), effectType %in% input$indivEffects)
@@ -235,8 +320,6 @@ server <- function(input, output) {
                   )) +
         guides(alpha = "none")
     }
-    
-    
    
     if (input$facetSel == TRUE) {
       levCat.plot <- levCat.plot +
@@ -246,7 +329,10 @@ server <- function(input, output) {
     levCat.plot +
       labs(x = "Time (ms)",y = expression(paste("Amplitude (",mu,"V)")),colour = "")+
       geom_vline(xintercept = 0,linetype = "dashed" )+
-      geom_hline(yintercept = 0,linetype = "dashed")
+      geom_hline(yintercept = 0,linetype = "dashed")+
+      theme(axis.text = element_text(size = 14),axis.title = element_text(size = 14),legend.text = element_text(size=14))+
+      coord_cartesian(xlim = c(input$timeRange[1],input$timeRange[2]))
+      
   })
 }
 
