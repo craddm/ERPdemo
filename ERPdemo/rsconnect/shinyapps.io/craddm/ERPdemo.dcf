@@ -3,8 +3,8 @@ title: ERPdemo
 account: craddm
 server: shinyapps.io
 appId: 141912
-bundleId: 647887
+bundleId: 652828
 url: https://craddm.shinyapps.io/ERPdemo/
-when: 1481639914.40162
+when: 1481914213.99238
 asMultiple: FALSE
 asStatic: FALSE

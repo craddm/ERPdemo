@@ -2,7 +2,7 @@
 # http://craddm.github.io/
 # Only for two conditions at present. Now allows uploading of own data.
 #
-# TO DO - allow specification of custom names
+# TO DO - allow specification of custom names on loading of file
 # 
 # Matt Craddock, 2016
 
@@ -24,7 +24,7 @@ levCatGA <- read_csv("data/levCatObjNon.csv",
   mutate(
     effectType = factor(if_else(
       condition == "Difference", "Difference", "Main"
-    )),
+      )),
     condition = factor(
       condition,
       levels = c("Object", "Non-Object", "Difference"),
@@ -72,11 +72,16 @@ ui <- fluidPage(
         inline = TRUE
       ),
       
-      h4("Confidence intervals"),
+      h4("Statistics"),
       checkboxInput("plotCIs",
                     label = "Plot confidence intervals",
                     value = FALSE),
       uiOutput("CIselect"),
+      
+      checkboxInput("plotSig",
+                    label = "Plot significant timepoints",
+                    value = FALSE),
+      uiOutput("sigOptions"),
       
       sliderInput(
         "timeRange",
@@ -90,7 +95,6 @@ ui <- fluidPage(
                     label = "Split conditions?",
                     value = FALSE)
     ),
-    
     
     # Show the ERP plot
     mainPanel(
@@ -117,6 +121,26 @@ server <- function(input, output, session) {
                                   "Both" = 3),
                    selected = 1,
                    inline = TRUE)
+    }
+  })
+  
+  output$sigOptions <- renderUI({
+    if (input$plotSig){
+      tagList(
+        sliderInput("pOffset",
+                    label = "P-value position offset",
+                    min = -10,
+                    max = 10,
+                    value = 0,
+                    width = "50%"),
+        radioButtons("correctionType",
+                     label = "Multiple comparison correction", 
+                     choices = list("Uncorrected" = 1,
+                                    "Bonferroni-Holm" = 2, 
+                                    "FDR" = 3),
+                     selected = 1,
+                     inline = TRUE)
+      )
     }
   })
   
@@ -152,9 +176,19 @@ server <- function(input, output, session) {
       levCatGA
     } else if (input$whichData == 2) {
       fileData()
-    }
+    } 
   })
-  
+
+  significanceTests <- reactive({
+    if (input$plotSig == TRUE) {
+      filter(dataInput(), condition != "Difference") %>%
+        split(.$Time) %>%
+        map(~t.test(amplitude~condition,paired = TRUE,data = .)) %>%
+        map_dbl(.,"p.value") %>%
+        data.frame(Time = unique(dataInput()$Time),p.value = .)
+      }
+  })
+    
   allCIs <- reactive({
     WSCI <- filter(dataInput(), condition != "Difference") %>%
       split(.$Time) %>%
@@ -324,6 +358,42 @@ server <- function(input, output, session) {
     if (input$facetSel == TRUE) {
       levCat.plot <- levCat.plot +
         facet_wrap(~condition,drop = TRUE)
+    }
+    
+    if (input$plotSig == TRUE) {
+       pvals <- significanceTests() 
+         
+      if (is.null(input$correctionType)){
+        pvals <- pvals %>% mutate(crit = 0+(.$p.value <= .05))
+      } else if (input$correctionType == 1){
+        pvals <- pvals %>% mutate(crit = 0+(.$p.value <= .05))
+      } else if (input$correctionType == 2){
+        pvals <- pvals %>% 
+          mutate(
+            p.value = p.adjust(.$p.value,"holm"),
+            crit = 0+(p.value <= .05)
+            )
+      } else if (input$correctionType == 3){
+        pvals <- pvals %>% 
+          mutate(
+            p.value = p.adjust(.$p.value,"BH"),
+            crit = 0+(p.value <= .05)
+          )
+      }
+         
+       pvals$crit[pvals$crit == 0] <- NA
+       
+       if (is.null(input$pOffset)) {
+         pvalOffset <- 0
+       } else {
+         pvalOffset <- input$pOffset
+       }
+       
+       levCat.plot <- levCat.plot +
+         geom_line(data = pvals,
+                   aes(x = Time, y = crit-pvalOffset),
+                   na.rm = TRUE,
+                   size = 2)
     }
     
     levCat.plot +
