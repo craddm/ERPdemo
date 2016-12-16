@@ -93,7 +93,18 @@ ui <- fluidPage(
       
       checkboxInput("facetSel",
                     label = "Split conditions?",
-                    value = FALSE)
+                    value = FALSE),
+      
+      helpText(
+        "For notes on usage, head over to",
+        a(href="https://craddm.github.io/","The Time-Frequency Transform"),
+        ". You can find code",
+        a(href="https://github.com/craddm/ERPdemo/","over on Github"),
+        "."
+      ),
+      helpText("Tweet me over at",
+               a(href="https://twitter.com/Matt_Craddock","@Matt_Craddock")
+      )
     ),
     
     # Show the ERP plot
@@ -167,6 +178,8 @@ server <- function(input, output, session) {
       )
   })
   
+  # Switch to the chosen dataset for further processing
+  
   dataInput <- reactive({
     if (is.null(input$customData)) {
       levCatGA
@@ -178,7 +191,8 @@ server <- function(input, output, session) {
       fileData()
     } 
   })
-
+  
+  # Calculate significance tests
   significanceTests <- reactive({
     if (input$plotSig == TRUE) {
       filter(dataInput(), condition != "Difference") %>%
@@ -188,66 +202,88 @@ server <- function(input, output, session) {
         data.frame(Time = unique(dataInput()$Time),p.value = .)
       }
   })
-    
+  
+  #Calculate all CIs - seems quicker this way as they only have to be calculated once...commented out code below forces recalculations
+  
   allCIs <- reactive({
-    WSCI <- filter(dataInput(), condition != "Difference") %>%
-      split(.$Time) %>%
-      map(
-        ~ summarySEwithin(
-          data = .,
-          measurevar = "amplitude",
-          withinvars = "condition",
-          idvar = "Subject"
-        )
-      ) %>%
-      map_df(extract) %>%
-      mutate(
-        Time = rep(unique(dataInput()$Time), each = 2),
-        #Note, you'll have to change 2 to match the number of conditions,
-        CItype = factor("WSCI"),
-        CIclass = factor("Main")
-      )
+    if (input$plotCIs) {
+      
+    #if (is.null(input$confInts) == FALSE) {
+      #if (input$confInts == 1 | input$confInts == 3){
+        BSCI <- filter(dataInput(), condition != "Difference") %>%
+          split(.$Time) %>%
+          map(~ summarySE(
+            data = .,
+            measurevar = "amplitude",
+            groupvars = "condition"
+            )) %>%
+          map_df(extract) %>%
+          mutate(
+            Time = rep(unique(dataInput()$Time), each = 2),
+            #Note, you'll have to change 2 to match the number of conditions,
+            CItype = factor("BSCI"),
+            CIclass = factor("Main")
+          )
+  #     }
+   #    if (input$confInts == 2 | input$confInts == 3){
+        WSCI <- filter(dataInput(), condition != "Difference") %>%
+          split(.$Time) %>%
+          map(
+            ~ summarySEwithin(
+              data = .,
+              measurevar = "amplitude",
+              withinvars = "condition",
+              idvar = "Subject"
+              )
+            ) %>%
+          map_df(extract) %>%
+          mutate(
+            Time = rep(unique(dataInput()$Time), each = 2),
+            #Note, you'll have to change 2 to match the number of conditions,
+            CItype = factor("WSCI"),
+            CIclass = factor("Main")
+          )
+   #    }
     
-    BSCI <- filter(dataInput(), condition != "Difference") %>%
-      split(.$Time) %>%
-      map( ~ summarySE(
-        data = .,
-        measurevar = "amplitude",
-        groupvars = "condition"
-      )) %>%
-      map_df(extract) %>%
-      mutate(
-        Time = rep(unique(dataInput()$Time), each = 2),
-        #Note, you'll have to change 2 to match the number of conditions,
-        CItype = factor("BSCI"),
-        CIclass = factor("Main")
-      )
-    
-    diffCI <- filter(dataInput(), condition == "Difference") %>%
-      split(.$Time) %>%
-      map( ~ summarySE(data = .,
-                       measurevar = "amplitude")) %>%
-      map_df(extract) %>%
-      mutate(
-        condition = "Difference",
-        Time = unique(dataInput()$Time),
-        CItype = factor("Difference"),
-        CIclass = factor("Difference")
-      ) %>%
-      select(-.id)
-    
-    rbind(BSCI, WSCI, diffCI)
+    #  if ("Difference" %in% input$GroupMeans) {
+      
+      diffCI <- filter(dataInput(), condition == "Difference") %>%
+        split(.$Time) %>%
+        map(~ summarySE(data = .,
+                        measurevar = "amplitude")) %>%
+        map_df(extract) %>%
+        mutate(
+          condition = "Difference",
+          Time = unique(dataInput()$Time),
+          CItype = factor("Difference"),
+          CIclass = factor("Difference")
+        ) %>%
+        select(-.id)
+      # }
+      #  if (input$confInts == 1){
+      #    BSCI
+      #  } else if (input$confInts == 2) {
+      #    WSCI
+      #  } else if (input$confInts == 3) {
+      # rbind(BSCI, WSCI)
+      #  } %>%
+      #   if ("Difference" %in% input$GroupMeans) {
+      #     rbind(diffCI)
+      #   }
+      rbind(BSCI, WSCI, diffCI)
+    }
+  })
+  
+  plotData <- reactive({
+    filter(dataInput(),
+           effectType %in% input$indivEffects |
+             effectType %in% input$GroupMeans
+           )
   })
   
   output$ERPPlot <- renderPlot({
     
-    levCat.plot <-
-      filter(
-        dataInput(),
-        effectType %in% input$indivEffects |
-          effectType %in% input$GroupMeans 
-      ) %>%
-      ggplot(aes(Time, amplitude)) +
+    levCat.plot <- ggplot(data = plotData(),aes(Time, amplitude)) +
       scale_color_brewer(palette = "Set1") +
       theme_minimal()
     
@@ -270,6 +306,7 @@ server <- function(input, output, session) {
         CIdata <-  filter(allCIs(), CIclass %in% input$GroupMeans)
         
         if (is.null(input$confInts)) {
+          return(NULL)
           } else if (input$confInts == 1) {
           levCat.plot <- levCat.plot +
             geom_ribbon(
@@ -323,7 +360,7 @@ server <- function(input, output, session) {
               alpha = 0.3
             ) +
             guides(fill = "none")
-        } else{
+        } else {
           levCat.plot <- levCat.plot +
             geom_ribbon(
               data = filter(CIdata, CItype != "WSCI"),
@@ -363,9 +400,10 @@ server <- function(input, output, session) {
     if (input$plotSig == TRUE) {
        pvals <- significanceTests() 
          
-      if (is.null(input$correctionType)){
-        pvals <- pvals %>% mutate(crit = 0+(.$p.value <= .05))
-      } else if (input$correctionType == 1){
+      #if (is.null(input$correctionType)){
+       # pvals <- pvals %>% mutate(crit = 0+(.$p.value <= .05))
+      #} else if (input$correctionType == 1){
+       if (req(input$correctionType) == 1){
         pvals <- pvals %>% mutate(crit = 0+(.$p.value <= .05))
       } else if (input$correctionType == 2){
         pvals <- pvals %>% 
