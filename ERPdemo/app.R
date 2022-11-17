@@ -75,7 +75,6 @@ ui <- fluidPage(
                     label = "Plot confidence intervals",
                     value = FALSE),
       uiOutput("CIselect"),
-      
       checkboxInput("plotSig",
                     label = "Plot significant timepoints",
                     value = FALSE),
@@ -92,16 +91,15 @@ ui <- fluidPage(
       checkboxInput("facetSel",
                     label = "Split conditions?",
                     value = FALSE),
-      
       helpText(
         "For notes on usage, head over to",
-        a(href="https://www.mattcraddock.com/","The Time-Frequency Transform"),
+        a(href = "https://www.mattcraddock.com/", "The Time-Frequency Transform"),
         ". You can find code",
-        a(href="https://github.com/craddm/ERPdemo/","over on Github"),
+        a(href = "https://github.com/craddm/ERPdemo/", "over on Github"),
         "."
       ),
       helpText("Tweet me over at",
-               a(href="https://twitter.com/Matt_Craddock","@Matt_Craddock")
+               a(href = "https://twitter.com/Matt_Craddock", "@Matt_Craddock")
       )
     ),
     
