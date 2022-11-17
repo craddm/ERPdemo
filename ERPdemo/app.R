@@ -12,7 +12,7 @@ library(tidyverse)
 library(Rmisc)
 library(Cairo)
 library(shinythemes)
-options(shiny.usecairo=T)
+options(shiny.usecairo = TRUE)
 
 #Load and prepare example data
 
