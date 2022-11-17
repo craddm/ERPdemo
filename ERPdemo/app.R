@@ -385,7 +385,7 @@ server <- function(input, output, session) {
    
     if (input$facetSel == TRUE) {
       levCat.plot <- levCat.plot +
-        facet_wrap(~condition,drop = TRUE)
+        facet_wrap(~condition, drop = TRUE)
     }
     
     if (input$plotSig == TRUE) {
@@ -394,47 +394,48 @@ server <- function(input, output, session) {
       #if (is.null(input$correctionType)){
        # pvals <- pvals %>% mutate(crit = 0+(.$p.value <= .05))
       #} else if (input$correctionType == 1){
-       if (req(input$correctionType) == 1){
-        pvals <- pvals %>% mutate(crit = 0+(.$p.value <= .05))
-      } else if (input$correctionType == 2){
-        pvals <- pvals %>% 
+       if (req(input$correctionType) == 1) {
+        pvals <- pvals %>% mutate(crit = 0 + (.$p.value <= .05))
+      } else if (input$correctionType == 2) {
+        pvals <- pvals %>%
           mutate(
-            p.value = p.adjust(.$p.value,"holm"),
-            crit = 0+(p.value <= .05)
+            p.value = p.adjust(.$p.value, "holm"),
+            crit = 0 + (p.value <= .05)
             )
-      } else if (input$correctionType == 3){
-        pvals <- pvals %>% 
+      } else if (input$correctionType == 3) {
+        pvals <- pvals %>%
           mutate(
-            p.value = p.adjust(.$p.value,"BH"),
-            crit = 0+(p.value <= .05)
+            p.value = p.adjust(.$p.value, "BH"),
+            crit = 0 + (p.value <= .05)
           )
       }
          
-       pvals$crit[pvals$crit == 0] <- NA
-       
-       if (is.null(input$pOffset)) {
-         pvalOffset <- 0
-       } else {
-         pvalOffset <- input$pOffset
-       }
+      pvals$crit[pvals$crit == 0] <- NA
+        if (is.null(input$pOffset)) {
+          pvalOffset <- 0
+        } else {
+        pvalOffset <- input$pOffset
+      }
        
        levCat.plot <- levCat.plot +
          geom_line(data = pvals,
-                   aes(x = Time, y = crit-pvalOffset),
+                   aes(x = Time, y = crit - pvalOffset),
                    na.rm = TRUE,
                    size = 2)
     }
     
     levCat.plot +
-      labs(x = "Time (ms)",y = expression(paste("Amplitude (",mu,"V)")),colour = "")+
-      geom_vline(xintercept = 0,linetype = "dashed" )+
-      geom_hline(yintercept = 0,linetype = "dashed")+
-      theme(axis.text = element_text(size = 14),axis.title = element_text(size = 14),legend.text = element_text(size=14))+
-      coord_cartesian(xlim = c(input$timeRange[1],input$timeRange[2]))
-      
+      labs(x = "Time (ms)",
+           y = expression(paste("Amplitude (", mu, "V)")),
+           colour = "") +
+      geom_vline(xintercept = 0, linetype = "dashed") +
+      geom_hline(yintercept = 0, linetype = "dashed") +
+      theme(axis.text = element_text(size = 14),
+            axis.title = element_text(size = 14),
+            legend.text = element_text(size = 14)) +
+      coord_cartesian(xlim = c(input$timeRange[1], input$timeRange[2]))
   })
 }
 
-# Run the application 
+# Run the application
 shinyApp(ui = ui, server = server)
-
