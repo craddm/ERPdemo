@@ -9,7 +9,6 @@
 # Load required libraries
 library(shiny)
 library(tidyverse)
-library(magrittr)
 library(Rmisc)
 library(Cairo)
 library(shinythemes)
@@ -47,7 +46,6 @@ ui <- fluidPage(
   # Sidebar
   sidebarLayout(
     sidebarPanel(
-      
       selectInput(
         "whichData",
         label = h4("Choose dataset"),
@@ -97,7 +95,7 @@ ui <- fluidPage(
       
       helpText(
         "For notes on usage, head over to",
-        a(href="https://craddm.github.io/","The Time-Frequency Transform"),
+        a(href="https://www.mattcraddock.com/","The Time-Frequency Transform"),
         ". You can find code",
         a(href="https://github.com/craddm/ERPdemo/","over on Github"),
         "."
@@ -128,7 +126,7 @@ server <- function(input, output, session) {
       radioButtons("confInts", 
                    label = NULL, 
                    choices = list("Between-subject" = 1,
-                                  "Within-subject" = 2, 
+                                  "Within-subject" = 2,
                                   "Both" = 3),
                    selected = 1,
                    inline = TRUE)
@@ -136,7 +134,7 @@ server <- function(input, output, session) {
   })
   
   output$sigOptions <- renderUI({
-    if (input$plotSig){
+    if (input$plotSig) {
       tagList(
         sliderInput("pOffset",
                     label = "P-value position offset",
@@ -145,9 +143,9 @@ server <- function(input, output, session) {
                     value = 0,
                     width = "50%"),
         radioButtons("correctionType",
-                     label = "Multiple comparison correction", 
+                     label = "Multiple comparison correction",
                      choices = list("Uncorrected" = 1,
-                                    "Bonferroni-Holm" = 2, 
+                                    "Bonferroni-Holm" = 2,
                                     "FDR" = 3),
                      selected = 1,
                      inline = TRUE)
@@ -179,7 +177,6 @@ server <- function(input, output, session) {
   })
   
   # Switch to the chosen dataset for further processing
-  
   dataInput <- reactive({
     if (is.null(input$customData)) {
       levCatGA
@@ -197,9 +194,9 @@ server <- function(input, output, session) {
     if (input$plotSig == TRUE) {
       filter(dataInput(), condition != "Difference") %>%
         split(.$Time) %>%
-        map(~t.test(amplitude~condition,paired = TRUE,data = .)) %>%
-        map_dbl(.,"p.value") %>%
-        data.frame(Time = unique(dataInput()$Time),p.value = .)
+        map(~t.test(amplitude~condition,paired = TRUE, data = .)) %>%
+        map_dbl(., "p.value") %>%
+        data.frame(Time = unique(dataInput()$Time), p.value = .)
       }
   })
   
@@ -207,7 +204,6 @@ server <- function(input, output, session) {
   
   allCIs <- reactive({
     if (input$plotCIs) {
-      
     #if (is.null(input$confInts) == FALSE) {
       #if (input$confInts == 1 | input$confInts == 3){
         BSCI <- filter(dataInput(), condition != "Difference") %>%
@@ -246,7 +242,6 @@ server <- function(input, output, session) {
    #    }
     
     #  if ("Difference" %in% input$GroupMeans) {
-      
       diffCI <- filter(dataInput(), condition == "Difference") %>%
         split(.$Time) %>%
         map(~ summarySE(data = .,
@@ -282,8 +277,7 @@ server <- function(input, output, session) {
   })
   
   output$ERPPlot <- renderPlot({
-    
-    levCat.plot <- ggplot(data = plotData(),aes(Time, amplitude)) +
+    levCat.plot <- ggplot(data = plotData(), aes(Time, amplitude)) +
       scale_color_brewer(palette = "Set1") +
       theme_minimal()
     
@@ -294,17 +288,15 @@ server <- function(input, output, session) {
       levCat.plot <- levCat.plot +
         stat_summary(
           data = ERPdata,
-          fun.y = mean,
+          fun = mean,
           geom = "line",
-          size = 1,
+          linewidth = 1,
           aes(colour = condition)
         )+ 
         scale_colour_discrete(limits = levels(ERPdata$condition))
       
       if (input$plotCIs == TRUE) {
-        
         CIdata <-  filter(allCIs(), CIclass %in% input$GroupMeans)
-        
         if (is.null(input$confInts)) {
           return(NULL)
           } else if (input$confInts == 1) {
@@ -379,7 +371,6 @@ server <- function(input, output, session) {
     }
     
     #If user requests individual effects, plot them for whatever types they have currently plotted (i.e. main effects and differences)
-    
     if (is.null(input$indivEffects) == FALSE) {
       ERPdata <- filter(dataInput(), effectType %in% input$indivEffects)
       levCat.plot <- levCat.plot +
